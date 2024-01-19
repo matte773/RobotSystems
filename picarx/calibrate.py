@@ -1,9 +1,9 @@
 import time
-from picarx_improved import YourPicarController
+from picarx_improved import Picarx
 
 def calibrate_steering():
     # Initialize the picar controller
-    picar = YourPicarController()
+    picar = Picarx()
 
     # Set initial calibration angle (you may adjust this based on your observations)
     initial_calibration_angle = 0
