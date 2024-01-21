@@ -53,7 +53,7 @@ class Picarx(object):
     # ultrasonic_pins: tring, echo2
     # config: path of config file
     def __init__(self, 
-                servo_pins:list=['P0', 'P1', 'P2'], 
+                servo_pins:list=['P0', 'P1', 'P4'], 
                 motor_pins:list=['D4', 'D5', 'P12', 'P13'],
                 grayscale_pins:list=['A0', 'A1', 'A2'],
                 ultrasonic_pins:list=['D2','D3'],
@@ -197,7 +197,8 @@ class Picarx(object):
             abs_current_angle = abs(current_angle)
             if abs_current_angle > self.DIR_MAX:
                 abs_current_angle = self.DIR_MAX
-            power_scale = math.sin(math.radians(current_angle))#(100 - abs_current_angle) / 100.0 
+            power_scale = math.sin(math.radians(current_angle))
+            #power_scale = (100 - abs_current_angle) / 100.0 
             if (current_angle / abs_current_angle) > 0:
                 self.set_motor_speed(1, -1*speed)
                 self.set_motor_speed(2, speed * power_scale)
@@ -214,7 +215,8 @@ class Picarx(object):
             abs_current_angle = abs(current_angle)
             if abs_current_angle > self.DIR_MAX:
                 abs_current_angle = self.DIR_MAX
-            power_scale = math.sin(math.radians(current_angle))#(100 - abs_current_angle) / 100.0
+            power_scale = math.sin(math.radians(current_angle))
+            #power_scale = (100 - abs_current_angle) / 100.0
             if (current_angle / abs_current_angle) > 0:
                 self.set_motor_speed(1, 1*speed * power_scale)
                 self.set_motor_speed(2, -speed) 
