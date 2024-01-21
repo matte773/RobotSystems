@@ -110,6 +110,63 @@ class Picarx(object):
         
         atexit.register(self.stop)
 
+    def line_movement(self, forward, angle, speed, timer):
+        if forward:
+            self.set_dir_servo_angle(angle)
+            self.forward(speed)
+            time.sleep(timer)
+            self.stop()
+            time.sleep(0.5)
+            self.backward(speed)
+            time.sleep(timer)
+            self.stop()
+            self.set_dir_servo_angle(0)
+        else:
+            self.set_dir_servo_angle(angle)
+            self.backward(speed)
+            time.sleep(timer)
+            self.stop()
+            time.sleep(0.5)
+            self.forward(speed)
+            time.sleep(timer)
+            self.stop()
+            self.set_dir_servo_angle(0)
+
+    def kturn(self, right):
+        speed = 50
+        angle = 19.5
+        timer = 2.4
+        backOffset = 0
+        forwardOffset = -0.2
+        horizontalOffset = 0.3
+        self.set_dir_servo_angle(0)
+        time.sleep(1)
+
+        if right:
+            self.forward(speed)
+            self.set_dir_servo_angle(angle)
+            time.sleep(timer)
+            self.set_dir_servo_angle(0)
+            self.backward(speed)
+            time.sleep(horizontalOffset)
+            self.set_dir_servo_angle(-angle)
+            self.backward(speed)
+            time.sleep(timer + backOffset)
+            self.set_dir_servo_angle(0)
+            self.forward(speed)
+            time.sleep(timer + forwardOffset)
+        else:
+            self.forward(speed)
+            self.set_dir_servo_angle(-angle)
+            time.sleep(timer)
+            self.backward(speed)
+            self.set_dir_servo_angle(angle)
+            time.sleep(timer + backOffset)
+            self.set_dir_servo_angle(0)
+            self.forward(speed)
+            time.sleep(timer + forwardOffset)
+        
+
     def set_motor_speed(self, motor, speed):
         ''' set motor speed
         
@@ -197,7 +254,8 @@ class Picarx(object):
             abs_current_angle = abs(current_angle)
             if abs_current_angle > self.DIR_MAX:
                 abs_current_angle = self.DIR_MAX
-            power_scale = math.sin(math.radians(current_angle))
+            power_scale = math.cos(math.radians(current_angle))
+            logging.debug("Power Scale: %s", power_scale)
             #power_scale = (100 - abs_current_angle) / 100.0 
             if (current_angle / abs_current_angle) > 0:
                 self.set_motor_speed(1, -1*speed)
@@ -215,7 +273,8 @@ class Picarx(object):
             abs_current_angle = abs(current_angle)
             if abs_current_angle > self.DIR_MAX:
                 abs_current_angle = self.DIR_MAX
-            power_scale = math.sin(math.radians(current_angle))
+            power_scale = math.cos(math.radians(current_angle))
+            logging.debug("Power Scale: %s", power_scale)
             #power_scale = (100 - abs_current_angle) / 100.0
             if (current_angle / abs_current_angle) > 0:
                 self.set_motor_speed(1, 1*speed * power_scale)
@@ -271,6 +330,11 @@ class Picarx(object):
 
 if __name__ == "__main__":
     px = Picarx()
-    px.forward(50)
-    time.sleep(1)
-    px.stop()
+
+    #px.line_movement(False, -12, 75, 3)
+    px.kturn(True)
+
+    # px.forward(50)
+    # time.sleep(1)
+    # px.stop()
+
