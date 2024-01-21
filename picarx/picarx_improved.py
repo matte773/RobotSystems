@@ -1,3 +1,5 @@
+#Note: forward(50) ~ 20 cm/s, backward = 19 cm/s
+
 import time
 import os
 import math
@@ -132,13 +134,52 @@ class Picarx(object):
             self.stop()
             self.set_dir_servo_angle(0)
 
+    def parallel(self, right):
+        speed = 50
+        angle = 25
+        straightTimer = 0.15
+        turnTimer = 1.2
+        parkbackTimer = 0
+        parkforTimer = 0.75
+        self.set_dir_servo_angle(0)
+        time.sleep(0.5)
+
+        if right:
+            self.backward(speed)
+            time.sleep(straightTimer)
+            self.set_dir_servo_angle(angle)
+            time.sleep(turnTimer)
+            self.set_dir_servo_angle(-angle)
+            time.sleep(turnTimer + 0.1)
+            self.set_dir_servo_angle(0)
+            self.backward(speed)
+            time.sleep(parkbackTimer)
+            self.forward(speed)
+            time.sleep(parkforTimer)
+
+        else:
+            self.backward(speed)
+            time.sleep(straightTimer)
+            self.set_dir_servo_angle(-angle)
+            time.sleep(turnTimer)
+            self.set_dir_servo_angle(angle)
+            time.sleep(turnTimer)
+            self.set_dir_servo_angle(0)
+            self.backward(speed)
+            time.sleep(parkbackTimer)
+            self.forward(speed)
+            time.sleep(parkforTimer)
+
+        self.stop()
+
+
     def kturn(self, right):
         speed = 50
         angle = 19.5
         timer = 2.4
         backOffset = 0
-        forwardOffset = -0.2
-        horizontalOffset = 0.3
+        forwardOffset = 0
+        horizontalOffset = 10.3
         self.set_dir_servo_angle(0)
         time.sleep(1)
 
@@ -327,14 +368,95 @@ class Picarx(object):
             self.config_flie.set("cliff_reference", self.cliff_reference)
         else:
             raise ValueError("grayscale reference must be a 1*3 list")
+        
+    def handle_input(self, user_input):
+
+        #Forward/Backward Input Tree
+        if user_input.lower() == '1' or user_input.lower() == 'line movement':
+            #Set Forward or Backwards
+            user_input = input("Would you like to go forward or backward (f/b): ")
+            if user_input.lower() == 'f' or user_input.lower() == 'forward':
+                forward = True
+            elif user_input.lower() == 'b' or user_input.lower() == 'backward':
+                forward = False
+            else:
+                print("Invalid input. Please enter 'f' or 'b' next time. The default of 'forward' will be chosen for this time.")
+                forward = True
+
+            #Angle input
+            user_input = input("Enter an angle in degrees from -30 to 30 if you would like. Enter 0 if you want a straight line: ")
+            try:
+                angle = int(user_input)
+                if -30 <= angle <= 30:
+                    #A good angle was entered, nothing to change
+                    angle = angle
+                else:
+                    print("Invalid angle. Please enter an angle between -30 and 30 next time. The default of '0' will be chosen for this time.")
+                    angle = 0
+            except ValueError:
+                print("Invalid angle. Please enter an angle between -30 and 30 next time. The default of '0' will be chosen for this time.")
+                angle = 0
+
+            #Speed input
+            user_input = input("Enter a speed from 0 to 100 (100 is full speed): ")
+            speed = int(user_input)
+            if 0 <= angle <= 100:
+                #A good speed was entered, nothing to change
+                speed = speed
+            else:
+                print("Invalid speed. Please enter an speed between 0 and 100 next time. The default of '50' will be chosen for this time.")
+                speed = 50
+
+            #Timer input
+            user_input = input("Enter a time in seconds you would like to run for (max time is 60 seconds): ")
+            timer = int(user_input)
+            if 0 <= angle <= 60:
+                #A good speed was entered, nothing to change
+                timer = timer
+            else:
+                print("Invalid time. Please enter an time between 0 and 60 seconds next time. The default of '5' seconds will be chosen for this time.")
+                timer = 5
+
+            self.line_movement(forward, angle, speed, timer)
+        
+        #Parallel Parking Input
+        elif user_input.lower() == '2' or user_input.lower() == 'parallel parking':
+            user_input = input("Would you like to park to the left or the right? (r/l): ")
+            if user_input.lower() == 'r' or user_input.lower() == 'right':
+                right = True
+            elif user_input.lower() == 'l' or user_input.lower() == 'left':
+                forward = False
+            else:
+                print("Invalid input. Please enter 'r' or 'l' next time. The default of 'right' will be chosen for this time.")
+                right = True
+            self.parallel(right)
+
+        #Three Point Turn Input
+        elif user_input.lower() == '3' or user_input.lower() == 'three point turn':
+            user_input = input("Would you like to turn to the left or the right initially? (r/l): ")
+            if user_input.lower() == 'r' or user_input.lower() == 'right':
+                right = True
+            elif user_input.lower() == 'l' or user_input.lower() == 'left':
+                forward = False
+            else:
+                print("Invalid input. Please enter 'r' or 'l' next time. The default of 'right' will be chosen for this time.")
+                right = True
+            self.kturn(right)
+
+        #Handle the 'exit' condition
+        elif user_input.lower() == 'exit':
+            print("Exiting the program.")
+            exit()
+
+        #Invalid input
+        else:
+            print("Invalid input. Please enter '1', '2', '3', or 'exit'.")
 
 if __name__ == "__main__":
     px = Picarx()
 
-    #px.line_movement(False, -12, 75, 3)
-    px.kturn(True)
-
-    # px.forward(50)
-    # time.sleep(1)
-    # px.stop()
+    while True:
+        user_input = input("Enter maneuver ('1'/'Line Movement', '2'/'Parallel Parking', '3'/'Three Point Turn') or 'exit' to quit: ")
+        px.handle_input(user_input)
+        px.stop()
 
