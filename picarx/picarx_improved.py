@@ -1,4 +1,8 @@
-#Note: forward(50) ~ 20 cm/s, backward = 19 cm/s
+# Filename: picarx_improved.py
+# Author: Mathew Miller
+# Created: January 22, 2024
+# Description: This file contains an improved Python script for the Sunfounder's PiCarX code.
+# Note: forward(50) ~ 20 cm/s, backward = 19 cm/s
 
 import time
 import os
@@ -19,8 +23,8 @@ from robot_hat.utils import reset_mcu, run_command
 #     from sim_robot_hat import Pin, ADC, PWM, Servo, fileDB
 #     from sim_robot_hat import Grayscale_Module, Ultrasonic
 # from sim_robot_hat import reset_mcu, run_command
-reset_mcu()
-time.sleep(0.2)
+# reset_mcu()
+# time.sleep(0.2)
 
 # reset robot_hat
 reset_mcu()
@@ -112,7 +116,9 @@ class Picarx(object):
         
         atexit.register(self.stop)
 
+    #This is the function used for the first manuver on the PiCar. It takes in a (bool, int, int, int, int). The bool is used to choose forward or backwards
     def line_movement(self, forward, angle, speed, timer):
+        #This is used if the user wants the car to start moving forward
         if forward:
             self.set_dir_servo_angle(angle)
             self.forward(speed)
@@ -123,6 +129,7 @@ class Picarx(object):
             time.sleep(timer)
             self.stop()
             self.set_dir_servo_angle(0)
+        #This is used if the user wants the car to start moving backwards
         else:
             self.set_dir_servo_angle(angle)
             self.backward(speed)
@@ -134,6 +141,7 @@ class Picarx(object):
             self.stop()
             self.set_dir_servo_angle(0)
 
+    #This is the function for parallel parking the car. The input 'right' is a bool that chooses wither the car parks to the right (True) or left (False)
     def parallel(self, right):
         speed = 50
         angle = 25
@@ -141,9 +149,11 @@ class Picarx(object):
         turnTimer = 1.2
         parkbackTimer = 0
         parkforTimer = 0.75
+        #Start with the wheels straight
         self.set_dir_servo_angle(0)
         time.sleep(0.5)
 
+        #Parking to the right
         if right:
             self.backward(speed)
             time.sleep(straightTimer)
@@ -157,6 +167,7 @@ class Picarx(object):
             self.forward(speed)
             time.sleep(parkforTimer)
 
+        #Parking to the left
         else:
             self.backward(speed)
             time.sleep(straightTimer)
@@ -170,9 +181,10 @@ class Picarx(object):
             self.forward(speed)
             time.sleep(parkforTimer)
 
+        #Stop the car after its in position
         self.stop()
 
-
+    #This is the function for a three point turn. The input 'right' is a bool that chooses wither the car parks to the right (True) or left (False)
     def kturn(self, right):
         speed = 50
         angle = 19.5
@@ -180,9 +192,11 @@ class Picarx(object):
         backOffset = 0
         forwardOffset = 0
         horizontalOffset = 10.3
+        #Start with the wheels straight
         self.set_dir_servo_angle(0)
         time.sleep(1)
 
+        #Turning to the right 
         if right:
             self.forward(speed)
             self.set_dir_servo_angle(angle)
@@ -196,6 +210,8 @@ class Picarx(object):
             self.set_dir_servo_angle(0)
             self.forward(speed)
             time.sleep(timer + forwardOffset)
+
+        #Turning to the left
         else:
             self.forward(speed)
             self.set_dir_servo_angle(-angle)
