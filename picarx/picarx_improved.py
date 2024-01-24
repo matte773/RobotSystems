@@ -36,6 +36,73 @@ def constrain(x, min_val, max_val):
     '''
     return max(min_val, min(max_val, x))
 
+class sensing(object):
+    CONFIG = '/opt/picar-x/picar-x.conf'
+
+    DEFAULT_LINE_REF = [1000, 1000, 1000]
+    DEFAULT_CLIFF_REF = [500, 500, 500]
+
+    def __init__(self, 
+                grayscale_pins:list=['A0', 'A1', 'A2'],
+                config:str=CONFIG,
+                ):
+        
+        # --------- config_flie ---------
+        self.config_flie = fileDB(config, 774, os.getlogin())
+
+        # --------- grayscale module init ---------
+        adc0, adc1, adc2 = [ADC(pin) for pin in grayscale_pins]
+        self.grayscale = Grayscale_Module(adc0, adc1, adc2, reference=None)
+        # get reference
+        self.line_reference = self.config_flie.get("line_reference", default_value=str(self.DEFAULT_LINE_REF))
+        self.line_reference = [float(i) for i in self.line_reference.strip().strip('[]').split(',')]
+        self.cliff_reference = self.config_flie.get("cliff_reference", default_value=str(self.DEFAULT_CLIFF_REF))
+        self.cliff_reference = [float(i) for i in self.cliff_reference.strip().strip('[]').split(',')]
+        # transfer reference
+        self.grayscale.reference(self.line_reference)
+
+    def set_grayscale_reference(self, value):
+        if isinstance(value, list) and len(value) == 3:
+            self.line_reference = value
+            self.grayscale.reference(self.line_reference)
+            self.config_flie.set("line_reference", self.line_reference)
+        else:
+            raise ValueError("grayscale reference must be a 1*3 list")
+
+    def get_grayscale_data(self):
+        return list.copy(self.grayscale.read())
+
+    def get_line_status(self,gm_val_list):
+        return self.grayscale.read_status(gm_val_list)
+
+    def set_line_reference(self, value):
+        self.set_grayscale_reference(value)
+
+    def get_cliff_status(self,gm_val_list):
+        for i in range(0,3):
+            if gm_val_list[i]<=self.cliff_reference[i]:
+                return True
+        return False
+
+    def set_cliff_reference(self, value):
+        if isinstance(value, list) and len(value) == 3:
+            self.cliff_reference = value
+            self.config_flie.set("cliff_reference", self.cliff_reference)
+        else:
+            raise ValueError("grayscale reference must be a 1*3 list")
+        
+class interp(object):
+    CONFIG = '/opt/picar-x/picar-x.conf'
+
+    DEFAULT_LINE_REF = [1000, 1000, 1000]
+    DEFAULT_CLIFF_REF = [500, 500, 500]
+
+    
+
+
+    
+
+
 class Picarx(object):
     CONFIG = '/opt/picar-x/picar-x.conf'
 
@@ -191,7 +258,7 @@ class Picarx(object):
         timer = 2.4
         backOffset = 0
         forwardOffset = 0
-        horizontalOffset = 10.3
+        horizontalOffset = 0.3
         #Start with the wheels straight
         self.set_dir_servo_angle(0)
         time.sleep(1)
@@ -470,8 +537,11 @@ class Picarx(object):
 
 if __name__ == "__main__":
     px = Picarx()
+    sense = sensing()
+
 
     while True:
+        logging.debug(sense.get_grayscale_data())
         user_input = input("Enter maneuver ('1'/'Line Movement', '2'/'Parallel Parking', '3'/'Three Point Turn') or 'exit' to quit: ")
         px.handle_input(user_input)
         px.stop()
