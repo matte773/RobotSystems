@@ -97,7 +97,22 @@ class interp(object):
     DEFAULT_LINE_REF = [1000, 1000, 1000]
     DEFAULT_CLIFF_REF = [500, 500, 500]
 
-    
+    polarity = 1 
+
+    def set_grayscale_reference(self, value):
+        if isinstance(value, list) and len(value) == 3:
+            self.line_reference = value
+            self.grayscale.reference(self.line_reference)
+            self.config_flie.set("line_reference", self.line_reference)
+        else:
+            raise ValueError("grayscale reference must be a 1*3 list")
+
+    def get_grayscale_data(self):
+        return list.copy(self.grayscale.read())
+
+    def get_calc_contrast(self):
+        greys = self.get_grayscale_data
+        return [(greys[0]-greys[1]),(greys[1]-greys[2])]
 
 
     
@@ -538,11 +553,12 @@ class Picarx(object):
 if __name__ == "__main__":
     px = Picarx()
     sense = sensing()
-
+    inter = interp()
 
     while True:
-        logging.debug(sense.get_grayscale_data())
-        user_input = input("Enter maneuver ('1'/'Line Movement', '2'/'Parallel Parking', '3'/'Three Point Turn') or 'exit' to quit: ")
-        px.handle_input(user_input)
+        #logging.debug(sense.get_grayscale_data())
+        logging.debug(inter.get_grayscale_data())
+        # user_input = input("Enter maneuver ('1'/'Line Movement', '2'/'Parallel Parking', '3'/'Three Point Turn') or 'exit' to quit: ")
+        # px.handle_input(user_input)
         px.stop()
 
