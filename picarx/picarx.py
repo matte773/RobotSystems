@@ -37,7 +37,7 @@ class Picarx(object):
     # ultrasonic_pins: tring, echo2
     # config: path of config file
     def __init__(self, 
-                servo_pins:list=['P0', 'P1', 'P2'], 
+                servo_pins:list=['P0', 'P1', 'P4'], 
                 motor_pins:list=['D4', 'D5', 'P12', 'P13'],
                 grayscale_pins:list=['A0', 'A1', 'A2'],
                 ultrasonic_pins:list=['D2','D3'],

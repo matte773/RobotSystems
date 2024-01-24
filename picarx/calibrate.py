@@ -6,11 +6,11 @@ def calibrate_steering():
     picar = Picarx()
 
     # Set initial calibration angle (you may adjust this based on your observations)
-    initial_calibration_angle = 90
+    initial_calibration_angle = 0
 
     # Command the system to drive forward at zero steering angle
     picar.set_dir_servo_angle(initial_calibration_angle)
-    #picar.forward(75)  # Adjust speed as needed
+    picar.forward(50)  # Adjust speed as needed
     time.sleep(5)  # Adjust duration as needed
     picar.stop()
 
