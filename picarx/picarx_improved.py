@@ -15,16 +15,14 @@ logging_format = "%(asctime)s: %(message)s"
 logging.basicConfig(format=logging_format, level=logging.INFO,
 datefmt="%H:%M:%S")
 logging.getLogger().setLevel(logging.DEBUG)
-# try:
-from robot_hat import Pin, ADC, PWM, Servo, fileDB
-from robot_hat import Grayscale_Module, Ultrasonic
-from robot_hat.utils import reset_mcu, run_command
-# except ImportError:
-#     from sim_robot_hat import Pin, ADC, PWM, Servo, fileDB
-#     from sim_robot_hat import Grayscale_Module, Ultrasonic
-# from sim_robot_hat import reset_mcu, run_command
-# reset_mcu()
-# time.sleep(0.2)
+try:
+    from robot_hat import Pin, ADC, PWM, Servo, fileDB
+    from robot_hat import Grayscale_Module, Ultrasonic
+    from robot_hat.utils import reset_mcu, run_command
+except ImportError:
+    from sim_robot_hat import Pin, ADC, PWM, Servo, fileDB
+    from sim_robot_hat import Grayscale_Module, Ultrasonic
+    from sim_robot_hat import reset_mcu, run_command
 
 # reset robot_hat
 reset_mcu()
@@ -61,35 +59,35 @@ class sensing(object):
         # transfer reference
         self.grayscale.reference(self.line_reference)
 
-    def set_grayscale_reference(self, value):
-        if isinstance(value, list) and len(value) == 3:
-            self.line_reference = value
-            self.grayscale.reference(self.line_reference)
-            self.config_flie.set("line_reference", self.line_reference)
-        else:
-            raise ValueError("grayscale reference must be a 1*3 list")
+    # def set_grayscale_reference(self, value):
+    #     if isinstance(value, list) and len(value) == 3:
+    #         self.line_reference = value
+    #         self.grayscale.reference(self.line_reference)
+    #         self.config_flie.set("line_reference", self.line_reference)
+    #     else:
+    #         raise ValueError("grayscale reference must be a 1*3 list")
 
     def get_grayscale_data(self):
         return list.copy(self.grayscale.read())
 
-    def get_line_status(self,gm_val_list):
-        return self.grayscale.read_status(gm_val_list)
+    # def get_line_status(self,gm_val_list):
+    #     return self.grayscale.read_status(gm_val_list)
 
-    def set_line_reference(self, value):
-        self.set_grayscale_reference(value)
+    # def set_line_reference(self, value):
+    #     self.set_grayscale_reference(value)
 
-    def get_cliff_status(self,gm_val_list):
-        for i in range(0,3):
-            if gm_val_list[i]<=self.cliff_reference[i]:
-                return True
-        return False
+    # def get_cliff_status(self,gm_val_list):
+    #     for i in range(0,3):
+    #         if gm_val_list[i]<=self.cliff_reference[i]:
+    #             return True
+    #     return False
 
-    def set_cliff_reference(self, value):
-        if isinstance(value, list) and len(value) == 3:
-            self.cliff_reference = value
-            self.config_flie.set("cliff_reference", self.cliff_reference)
-        else:
-            raise ValueError("grayscale reference must be a 1*3 list")
+    # def set_cliff_reference(self, value):
+    #     if isinstance(value, list) and len(value) == 3:
+    #         self.cliff_reference = value
+    #         self.config_flie.set("cliff_reference", self.cliff_reference)
+    #     else:
+    #         raise ValueError("grayscale reference must be a 1*3 list")
         
 class interp(object):
     CONFIG = '/opt/picar-x/picar-x.conf'
@@ -97,9 +95,31 @@ class interp(object):
     DEFAULT_LINE_REF = [1000, 1000, 1000]
     DEFAULT_CLIFF_REF = [500, 500, 500]
 
+    #Default polarity is 1, which is dark line on light background. Use -1 for 
     polarity = 1 
 
+    def __init__(self, 
+                grayscale_pins:list=['A0', 'A1', 'A2'],
+                config:str=CONFIG,
+                ):
+        
+        # --------- config_flie ---------
+        self.config_flie = fileDB(config, 774, os.getlogin())
+
+        # --------- grayscale module init ---------
+        adc0, adc1, adc2 = [ADC(pin) for pin in grayscale_pins]
+        self.grayscale = Grayscale_Module(adc0, adc1, adc2, reference=None)
+        # get reference
+        self.line_reference = self.config_flie.get("line_reference", default_value=str(self.DEFAULT_LINE_REF))
+        self.line_reference = [float(i) for i in self.line_reference.strip().strip('[]').split(',')]
+        self.cliff_reference = self.config_flie.get("cliff_reference", default_value=str(self.DEFAULT_CLIFF_REF))
+        self.cliff_reference = [float(i) for i in self.cliff_reference.strip().strip('[]').split(',')]
+        # transfer reference
+        self.grayscale.reference(self.line_reference)
+
     def set_grayscale_reference(self, value):
+        logging.debug("Value Interp Recieved")
+        logging.debug(value)
         if isinstance(value, list) and len(value) == 3:
             self.line_reference = value
             self.grayscale.reference(self.line_reference)
@@ -111,13 +131,53 @@ class interp(object):
         return list.copy(self.grayscale.read())
 
     def get_calc_contrast(self):
-        greys = self.get_grayscale_data
-        return [(greys[0]-greys[1]),(greys[1]-greys[2])]
+        #Default output is 0 or "centered"
+        output = 0
+        
+        #Default polarity is 1, which is dark line on light background. Use -1 for 
+        polarity = 1 
 
+        #Threshold 
+        thresh = 0.2
 
+        greys = self.get_grayscale_data()
+        if isinstance(greys, list) and len(greys) == 3:
+            #logging.debug(greys)
+            grey_avg = (greys[0] + greys[1] + greys[2])/3
+            greys_norm = [(greys[0]/grey_avg), (greys[1]/grey_avg), (greys[2]/grey_avg)]
+            #greys_norm_avg = (greys_norm[0] + greys_norm[1] + greys_norm[2])/3
+            greys_thresh = [greys_norm[1] - greys_norm[0], greys_norm[1] - greys_norm[2]]
+            #greys_norm_thresh = [greys_thresh[0]/greys_norm_avg, greys_thresh[1]/greys_norm_avg]
+
+            #Sets the steering value/output 
+            #Case 1: We are far left/Make a sharp right turn (left diff = 0, right diff = positive)
+            if (0 < abs(greys_thresh[0]) < thresh) and (abs(greys_thresh[1]) > thresh) and (greys_thresh[1] > 0): 
+                #Output 1 = turn sharp right (001)
+                output = 1
+            #Case 2: We are slight left/need to turn slight right (left diff = negative, right diff = 0)
+            elif (abs(greys_thresh[0]) > thresh) and (0 < abs(greys_thresh[1]) < thresh) and (greys_thresh[0] < 0):
+                #Output 0.5 = turn slight right (011)
+                output = 0.5
+            #Case 3: We are slight right/need to turn slight left (left diff = 0, right diff = negative)
+            elif (0 < abs(greys_thresh[0]) < thresh) and (abs(greys_thresh[1]) > thresh) and (greys_thresh[1] < 0): 
+                #Output -0.5 = turn slight left (110)
+                output = -0.5
+            #Case 4: We are far right/need to turn sharp left (left diff = positive, right diff = 0)
+            elif (abs(greys_thresh[0]) > thresh) and (0 < abs(greys_thresh[1]) < thresh) and (greys_thresh[0] > 0):
+                #Output -1 = turn sharp left (100)
+                output = -1 
+            #Case 5: Were centered, go straight
+            else:
+                #Output 0 = centered (010)
+                output = 0
+        else:
+            raise ValueError("grayscale reference must be a 1*3 list")
+        
+        logging.debug(f"Diffs: {greys_thresh}")
+        #logging.debug(f"Normalized Diffs: {greys_norm_thresh}")
+        logging.debug(f"Output State: {output}")
+        return output
     
-
-
 class Picarx(object):
     CONFIG = '/opt/picar-x/picar-x.conf'
 
@@ -550,15 +610,68 @@ class Picarx(object):
         else:
             print("Invalid input. Please enter '1', '2', '3', or 'exit'.")
 
+class control(Picarx):
+    # CONFIG = '/opt/picar-x/picar-x.conf'
+
+    # DEFAULT_LINE_REF = [1000, 1000, 1000]
+    # DEFAULT_CLIFF_REF = [500, 500, 500]
+
+    #Set cont_in to something we'll never get
+    cont_in = 100
+
+    #Angles
+    slight = 13
+    hard = 30
+
+    def init(self):
+        super().init()
+        
+    # # --------- config_flie ---------
+    # self.config_flie = fileDB(config, 774, os.getlogin())
+
+    def set_cont_in(self, value):
+        if (-1 <= value <= 1):
+            self.cont_in = value
+        else:
+            logging.error("Incorrect Input Recived by Controller")
+
+    def drive(self):
+        if self.cont_in != 100:
+            if self.cont_in == -1:
+                self.set_dir_servo_angle(-self.hard)
+            elif self.cont_in == -0.5:
+                self.set_dir_servo_angle(-self.slight)
+            elif self.cont_in == 0:
+                self.set_dir_servo_angle(0)
+            elif self.cont_in == 0.5:
+                self.set_dir_servo_angle(self.slight)
+            elif self.cont_in == 1:
+                self.set_dir_servo_angle(self.hard)
+            else:
+                logging.error("Something went wrong when setting the stearing angle")
+
+
 if __name__ == "__main__":
     px = Picarx()
     sense = sensing()
     inter = interp()
+    controller = control()
 
     while True:
-        #logging.debug(sense.get_grayscale_data())
-        logging.debug(inter.get_grayscale_data())
+        #Week 3 Line Following
+        logging.debug(sense.get_grayscale_data())
+        inter.set_grayscale_reference(sense.get_grayscale_data())
+        controller.set_cont_in(inter.get_calc_contrast())
+        controller.drive()
+        #time.sleep(0.1)
+        px.forward(30)
+
+        # logging.debug(inter.get_grayscale_data())
+
+        #Week 2 Manuver 
         # user_input = input("Enter maneuver ('1'/'Line Movement', '2'/'Parallel Parking', '3'/'Three Point Turn') or 'exit' to quit: ")
         # px.handle_input(user_input)
-        px.stop()
 
+        # px.stop()
+
+    px.stop()
