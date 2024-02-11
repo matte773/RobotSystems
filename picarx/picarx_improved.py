@@ -9,6 +9,9 @@ import os
 import math
 import logging
 import atexit
+import concurrent.futures
+import rossros as rr
+from readerwriterlock import rwlock
 
 from logdecorator import log_on_start, log_on_end, log_on_error
 logging_format = "%(asctime)s: %(message)s"
@@ -24,15 +27,39 @@ except ImportError:
     from sim_robot_hat import Grayscale_Module, Ultrasonic
     from sim_robot_hat import reset_mcu, run_command
 
+# Initiate data and termination busses
+# bGreyIn = rr.Bus()
+# bGreyOut = rr.Bus()
+# bUltraIn = rr.Bus()
+# bUltraOut = rr.Bus()
+# bTerminate = rr.Bus(0, "Termination Bus")
+
 # reset robot_hat
 reset_mcu()
 time.sleep(0.2)
 
 def constrain(x, min_val, max_val):
+
     '''
     Constrains value to be within a range.
     '''
     return max(min_val, min(max_val, x))
+
+class bus(object):
+
+    def __init__(self):
+        self.message = None  # Initialize the message attribute to None
+        self.lock = rwlock.RWLockWriteD()
+
+    def write(self, message):
+        """Write a message to the bus"""
+        with self.lock.gen_wlock():
+            self.message = message
+
+    def read(self):
+        """Read the message from the bus"""
+        with self.lock.gen_rlock():
+            return self.message
 
 class sensing(object):
     CONFIG = '/opt/picar-x/picar-x.conf'
@@ -54,40 +81,23 @@ class sensing(object):
         # get reference
         self.line_reference = self.config_flie.get("line_reference", default_value=str(self.DEFAULT_LINE_REF))
         self.line_reference = [float(i) for i in self.line_reference.strip().strip('[]').split(',')]
-        self.cliff_reference = self.config_flie.get("cliff_reference", default_value=str(self.DEFAULT_CLIFF_REF))
-        self.cliff_reference = [float(i) for i in self.cliff_reference.strip().strip('[]').split(',')]
         # transfer reference
         self.grayscale.reference(self.line_reference)
 
-    # def set_grayscale_reference(self, value):
-    #     if isinstance(value, list) and len(value) == 3:
-    #         self.line_reference = value
-    #         self.grayscale.reference(self.line_reference)
-    #         self.config_flie.set("line_reference", self.line_reference)
-    #     else:
-    #         raise ValueError("grayscale reference must be a 1*3 list")
-
     def get_grayscale_data(self):
         return list.copy(self.grayscale.read())
+    
+    def stream_grayscale_data(self, grey_bus, polling_rate):
+        while True:
+            #logging.debug(f"Sense Setting Grey: {grey_bus.read()}")
+            time.sleep(polling_rate)
+            grey_bus.write(list.copy(self.grayscale.read()))
 
-    # def get_line_status(self,gm_val_list):
-    #     return self.grayscale.read_status(gm_val_list)
-
-    # def set_line_reference(self, value):
-    #     self.set_grayscale_reference(value)
-
-    # def get_cliff_status(self,gm_val_list):
-    #     for i in range(0,3):
-    #         if gm_val_list[i]<=self.cliff_reference[i]:
-    #             return True
-    #     return False
-
-    # def set_cliff_reference(self, value):
-    #     if isinstance(value, list) and len(value) == 3:
-    #         self.cliff_reference = value
-    #         self.config_flie.set("cliff_reference", self.cliff_reference)
-    #     else:
-    #         raise ValueError("grayscale reference must be a 1*3 list")
+    def rr_stream(self):
+        while True:
+            #logging.debug(f"Sense Setting Grey: {grey_bus.read()}")
+            time.sleep(polling_rate)
+            grey_bus.write(list.copy(self.grayscale.read()))
         
 class interp(object):
     CONFIG = '/opt/picar-x/picar-x.conf'
@@ -95,7 +105,7 @@ class interp(object):
     DEFAULT_LINE_REF = [1000, 1000, 1000]
     DEFAULT_CLIFF_REF = [500, 500, 500]
 
-    #Default polarity is 1, which is dark line on light background. Use -1 for 
+    #Default polarity is 1, which is dark line on light background. Use -1 for  light line on dark background 
     polarity = 1 
 
     def __init__(self, 
@@ -118,8 +128,6 @@ class interp(object):
         self.grayscale.reference(self.line_reference)
 
     def set_grayscale_reference(self, value):
-        logging.debug("Value Interp Recieved")
-        logging.debug(value)
         if isinstance(value, list) and len(value) == 3:
             self.line_reference = value
             self.grayscale.reference(self.line_reference)
@@ -129,25 +137,30 @@ class interp(object):
 
     def get_grayscale_data(self):
         return list.copy(self.grayscale.read())
+    
+    def get_polarity(self):
+        return self.polarity
+    
+    def set_polarity(self, value):
+        if (value == 1) or (value == -1):
+            self.polarity = value
+        else:
+            logging.error("Incorrect Polarity Value")
 
-    def get_calc_contrast(self):
+    def get_calc_contrast(self, greys):
         #Default output is 0 or "centered"
         output = 0
         
-        #Default polarity is 1, which is dark line on light background. Use -1 for 
-        polarity = 1 
-
         #Threshold 
         thresh = 0.2
 
-        greys = self.get_grayscale_data()
-        if isinstance(greys, list) and len(greys) == 3:
-            #logging.debug(greys)
+        #greys = self.get_grayscale_data()
+        #if isinstance(greys, list) and len(greys) == 3:
+        if greys != None:
+            #greys = self.get_grayscale_data()
             grey_avg = (greys[0] + greys[1] + greys[2])/3
             greys_norm = [(greys[0]/grey_avg), (greys[1]/grey_avg), (greys[2]/grey_avg)]
-            #greys_norm_avg = (greys_norm[0] + greys_norm[1] + greys_norm[2])/3
             greys_thresh = [greys_norm[1] - greys_norm[0], greys_norm[1] - greys_norm[2]]
-            #greys_norm_thresh = [greys_thresh[0]/greys_norm_avg, greys_thresh[1]/greys_norm_avg]
 
             #Sets the steering value/output 
             #Case 1: We are far left/Make a sharp right turn (left diff = 0, right diff = positive)
@@ -173,10 +186,57 @@ class interp(object):
         else:
             raise ValueError("grayscale reference must be a 1*3 list")
         
-        logging.debug(f"Diffs: {greys_thresh}")
-        #logging.debug(f"Normalized Diffs: {greys_norm_thresh}")
+        #For Debugging 
+        logging.debug(f"Greys: {greys}")
+        # logging.debug(f"Diffs: {greys_thresh}")
+        # logging.debug(f"Normalized Diffs: {greys_norm_thresh}")
         logging.debug(f"Output State: {output}")
-        return output
+
+        return (output * self.polarity)
+    
+    def transform_greyscale(self, grey_bus, move_bus, polling_rate):
+        #Default output is 0 or "centered"
+        output = 0
+        
+        #Threshold 
+        thresh = 0.2
+
+        while True: 
+            logging.debug(f"Inter Input Grey: {grey_bus.read()}")
+            logging.debug(f"Inter Output Move: {output}")
+            greys = grey_bus.read()
+            if greys != None:
+                
+                grey_avg = (greys[0] + greys[1] + greys[2])/3
+                greys_norm = [(greys[0]/grey_avg), (greys[1]/grey_avg), (greys[2]/grey_avg)]
+                greys_thresh = [greys_norm[1] - greys_norm[0], greys_norm[1] - greys_norm[2]]
+
+                #Sets the steering value/output 
+                #Case 1: We are far left/Make a sharp right turn (left diff = 0, right diff = positive)
+                if (0 < abs(greys_thresh[0]) < thresh) and (abs(greys_thresh[1]) > thresh) and (greys_thresh[1] > 0): 
+                    #Output 1 = turn sharp right (001)
+                    output = 1
+                #Case 2: We are slight left/need to turn slight right (left diff = negative, right diff = 0)
+                elif (abs(greys_thresh[0]) > thresh) and (0 < abs(greys_thresh[1]) < thresh) and (greys_thresh[0] < 0):
+                    #Output 0.5 = turn slight right (011)
+                    output = 0.5
+                #Case 3: We are slight right/need to turn slight left (left diff = 0, right diff = negative)
+                elif (0 < abs(greys_thresh[0]) < thresh) and (abs(greys_thresh[1]) > thresh) and (greys_thresh[1] < 0): 
+                    #Output -0.5 = turn slight left (110)
+                    output = -0.5
+                #Case 4: We are far right/need to turn sharp left (left diff = positive, right diff = 0)
+                elif (abs(greys_thresh[0]) > thresh) and (0 < abs(greys_thresh[1]) < thresh) and (greys_thresh[0] > 0):
+                    #Output -1 = turn sharp left (100)
+                    output = -1 
+                #Case 5: Were centered, go straight
+                else:
+                    #Output 0 = centered (010)
+                    output = 0
+
+            time.sleep(polling_rate)
+
+            if greys != None:
+                move_bus.write(output * self.polarity)
     
 class Picarx(object):
     CONFIG = '/opt/picar-x/picar-x.conf'
@@ -610,12 +670,18 @@ class Picarx(object):
         else:
             print("Invalid input. Please enter '1', '2', '3', or 'exit'.")
 
+    def dodge_this(self):
+    
+        dist = self.get_distance()
+        logging.debug(f"Distance Read: {dist}")
+        if 0 < dist < 20:
+            obj = True
+        else:
+            obj = False
+            
+        return obj
+
 class control(Picarx):
-    # CONFIG = '/opt/picar-x/picar-x.conf'
-
-    # DEFAULT_LINE_REF = [1000, 1000, 1000]
-    # DEFAULT_CLIFF_REF = [500, 500, 500]
-
     #Set cont_in to something we'll never get
     cont_in = 100
 
@@ -625,9 +691,7 @@ class control(Picarx):
 
     def init(self):
         super().init()
-        
-    # # --------- config_flie ---------
-    # self.config_flie = fileDB(config, 774, os.getlogin())
+        atexit.register(self.stop)
 
     def set_cont_in(self, value):
         if (-1 <= value <= 1):
@@ -635,8 +699,9 @@ class control(Picarx):
         else:
             logging.error("Incorrect Input Recived by Controller")
 
-    def drive(self):
-        if self.cont_in != 100:
+    def drive(self, value, obj):
+        self.cont_in = value
+        if self.cont_in != 100 and not obj:
             if self.cont_in == -1:
                 self.set_dir_servo_angle(-self.hard)
             elif self.cont_in == -0.5:
@@ -650,6 +715,33 @@ class control(Picarx):
             else:
                 logging.error("Something went wrong when setting the stearing angle")
 
+            self.forward(35)
+        elif obj:
+            self.stop()
+
+    def consume_drive(self, move_bus, polling_rate):
+
+        while True:
+            self.cont_in = move_bus.read()
+            logging.debug(f"Move: {move_bus.read()}")
+
+            if self.cont_in != 100 and self.cont_in != None:
+                if self.cont_in == -1:
+                    self.set_dir_servo_angle(-self.hard)
+                elif self.cont_in == -0.5:
+                    self.set_dir_servo_angle(-self.slight)
+                elif self.cont_in == 0:
+                    self.set_dir_servo_angle(0)
+                elif self.cont_in == 0.5:
+                    self.set_dir_servo_angle(self.slight)
+                elif self.cont_in == 1:
+                    self.set_dir_servo_angle(self.hard)
+                else:
+                    logging.error("Something went wrong when setting the stearing angle")
+
+                self.forward(35)
+            time.sleep(polling_rate)
+
 
 if __name__ == "__main__":
     px = Picarx()
@@ -657,21 +749,132 @@ if __name__ == "__main__":
     inter = interp()
     controller = control()
 
-    while True:
-        #Week 3 Line Following
-        logging.debug(sense.get_grayscale_data())
-        inter.set_grayscale_reference(sense.get_grayscale_data())
-        controller.set_cont_in(inter.get_calc_contrast())
-        controller.drive()
-        #time.sleep(0.1)
-        px.forward(30)
+    # move_bus = bus()
+    # grey_bus = bus()
 
-        # logging.debug(inter.get_grayscale_data())
+    bSensor = rr.Bus(sense.get_grayscale_data(), "Grey Scale Bus")
+    bInterpret = rr.Bus(inter.get_calc_contrast(sense.get_grayscale_data()), "Interpret Bus")
+    bUltra = rr.Bus(px.dodge_this(), "Obstacle Bus")
+    bControl = rr.Bus(controller.drive(inter.get_calc_contrast(sense.get_grayscale_data()), px.dodge_this()), "Control bus")
+    bTerminate = rr.Bus(0, "Termination Bus")
+
+    # Wrap the square wave signal generator into a producer
+    readGrey = rr.Producer(
+        sense.get_grayscale_data,  # function that will generate data
+        bSensor,  # output data bus
+        0.05,  # delay between data generation cycles
+        bTerminate,  # bus to watch for termination signal
+        "Read the greyscale data")
+
+    # Wrap the square wave signal generator into a producer
+    readUltra = rr.Producer(
+        px.dodge_this,  # function that will generate data
+        bUltra,  # output data bus
+        0.05,  # delay between data generation cycles
+        bTerminate,  # bus to watch for termination signal
+        "Read the ultrasonic data")
+
+
+    # Wrap the multiplier function into a consumer-producer
+    interpCalc = rr.ConsumerProducer(
+        inter.get_calc_contrast,  # function that will process data
+        bSensor,  # input data buses
+        bInterpret,  # output data bus
+        0.05,  # delay between data control cycles
+        bTerminate,  # bus to watch for termination signal
+        "Calculate the greyscale turning angle")
+    
+    # Wrap the data controlCar into a consumer
+    controlCar = rr.Consumer(
+            controller.drive,  # function that will process data
+            (bInterpret, bUltra),  # input data buses
+            0.05,  # delay between data control cycles
+            bTerminate,  # bus to watch for termination signal
+            "Control PiCar")
+    """ Fourth Part: Create RossROS Printer and Timer objects """
+
+    # Make a printer that returns the most recent wave and product values
+    printBuses = rr.Printer(
+        (bSensor, bUltra, bInterpret, bControl, bTerminate),  # input data buses
+        # bMultiplied,      # input data buses
+        0.25,  # delay between printing cycles
+        bTerminate,  # bus to watch for termination signal
+        "Print raw and derived data",  # Name of printer
+        "Data bus readings are: ")  # Prefix for output
+    
+    # Make a timer (a special kind of producer) that turns on the termination
+    # bus when it triggers
+    terminationTimer = rr.Timer(
+            bTerminate,  # Output data bus
+            10,  # Duration
+            0.01,  # Delay between checking for termination time
+            bTerminate,  # Bus to check for termination signal
+            "Termination timer")  # Name of this timer
+
+    # Create a list of producer-consumers to execute concurrently
+    producer_consumer_list = [readGrey,
+                                interpCalc,
+                                controlCar,
+                                readUltra,
+                                printBuses, 
+                                terminationTimer]
+    
+    #Execute the list of producer-consumers concurrently
+    rr.runConcurrently(producer_consumer_list)
+
+    atexit.register(px.stop)
+
+    # logging.debug(f"Grey: {grey_bus.read()}")
+    # logging.debug(f"Move: {move_bus.read()}")
+
+    # with concurrent.futures.ThreadPoolExecutor(max_workers=3) as executor:
+    #     eSensor = executor.submit(sense.stream_grayscale_data, grey_bus,
+    #     0.01)
+    #     eInterpreter = executor.submit(inter.transform_greyscale,
+    #     grey_bus, move_bus, 0.02)
+    #     eController = executor.submit(controller.consume_drive,
+    #     move_bus, 0.03)
+
+    #     eSensor.daemon = True
+    #     eInterpreter.daemon = True
+    #     eController.daemon = True 
+
+
+    # while True:
+
+    #     grey = sense.get_grayscale_data()
+    #     interps = inter.get_calc_contrast(grey)
+    #     cont = controller.drive(interps, px.dodge_this())
+
+        #Week 3 Line Following
+
+        #Incoming data from the greyscale sensor
+        # logging.debug(f"Grey: {grey_bus.read()}")
+        # logging.debug(f"Move: {move_bus.read()}")
+        #Week 4 Consumer Producer 
+        
+        # sense.stream_grayscale_data(grey_bus, 0.1)  
+        # inter.transform_greyscale(grey_bus, move_bus, 0.1)
+        # controller.consume_drive(move_bus, 0.1)
+
+        # #Sets the greyscale in interp so that it can be refrenced later (might be un-needed)
+        # inter.set_grayscale_reference(sense.get_grayscale_data())
+
+        # #This is where the direction is calculated for turns and movement 
+        # controller.set_cont_in(inter.get_calc_contrast())
+
+        # #This sets the polarity, 1 means black line on light background, -1 means white line on dark background
+        # inter.set_polarity(1)
+
+        # #This takes the calculation from 
+        # controller.drive()
+
+        #Used to slow down the loop if desired
+        #time.sleep(0.1)
 
         #Week 2 Manuver 
         # user_input = input("Enter maneuver ('1'/'Line Movement', '2'/'Parallel Parking', '3'/'Three Point Turn') or 'exit' to quit: ")
         # px.handle_input(user_input)
-
         # px.stop()
 
-    px.stop()
+    # px.stop()
